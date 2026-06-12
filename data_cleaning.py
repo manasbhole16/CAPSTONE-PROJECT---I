@@ -13,31 +13,21 @@ Steps:
  7. Generate data_dictionary.md in reports/
 """
 
-import sys
-import sqlite3
-import warnings
-import logging
-from pathlib import Path
-
 import pandas as pd
+import sqlite3
+import os
+import warnings
+warnings.filterwarnings('ignore')
 
-warnings.filterwarnings("ignore")
-logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
-log = logging.getLogger(__name__)
+# ─── Paths ────────────────────────────────────────────────────────────────────
+RAW_DIR       = 'data/raw/'
+PROCESSED_DIR = 'data/processed/'
+SQL_DIR       = 'sql/'
+REPORTS_DIR   = 'reports/'
+DB_PATH       = 'bluestock_mf.db'
 
-# ─── Import centralised config ────────────────────────────────────────────────
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import config as C
-
-# ─── Resolve paths from config ────────────────────────────────────────────────
-RAW_DIR       = str(C.DIRS["raw"]) + "/"
-PROCESSED_DIR = str(C.DIRS["processed"]) + "/"
-SQL_DIR       = str(C.DIRS["sql"]) + "/"
-REPORTS_DIR   = str(C.DIRS["reports"]) + "/"
-DB_PATH       = str(C.DB_PATH)
-
-for _d in [C.DIRS["processed"], C.DIRS["sql"], C.DIRS["reports"]]:
-    _d.mkdir(parents=True, exist_ok=True)
+for d in [PROCESSED_DIR, SQL_DIR, REPORTS_DIR]:
+    os.makedirs(d, exist_ok=True)
 
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
@@ -637,11 +627,6 @@ def run_sample_queries():
 
 
 # ─── main ─────────────────────────────────────────────────────────────────────
-# ─── Aliases for run_pipeline.py ─────────────────────────────────────────────
-def create_database(): load_to_sqlite(clean_nav_history(), clean_investor_transactions(), clean_scheme_performance(), pd.read_csv(RAW_DIR+'03_aum_by_fund_house.csv'), pd.read_csv(RAW_DIR+'01_fund_master.csv'))
-def write_sql_artifacts(): write_sql_files()
-def generate_data_dictionary(): pass  # already done inside write_sql_files()
-
 if __name__ == "__main__":
     print("="*55)
     print("TASK 2 — Data Cleaning + SQL Database Design")

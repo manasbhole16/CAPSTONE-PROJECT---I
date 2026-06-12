@@ -7,149 +7,197 @@ Covers:
  - Documenting anomalies / quality summary
  - AMFI code validation (every fund_master code present in nav_history)
  - Explore fund_master: unique fund houses, categories, sub-categories, risk grades
-
-All paths are resolved via config.py — nothing is hardcoded.
 """
 
-import sys
-import json
-import logging
-import warnings
-
 import pandas as pd
-from pathlib import Path
+import os
+import json
 
-warnings.filterwarnings("ignore")
+# ─── Path configuration ───────────────────────────────────────────────────────
+RAW_DIR       = 'data/raw/'
+PROCESSED_DIR = 'data/processed/'
+REPORTS_DIR   = 'reports/'
 
-# ─── Import config ────────────────────────────────────────────────────────────
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import config as C
-
-# ─── Logger ───────────────────────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
-log = logging.getLogger(__name__)
-
-# ─── Ensure output directories exist ─────────────────────────────────────────
-for d in [C.DIRS["processed"], C.DIRS["reports"]]:
-    d.mkdir(parents=True, exist_ok=True)
+os.makedirs(PROCESSED_DIR, exist_ok=True)
+os.makedirs(REPORTS_DIR,   exist_ok=True)
 
 
 # ─── 1. Inspect all datasets ──────────────────────────────────────────────────
-def inspect_datasets() -> dict:
-    """Load all CSV files from data/raw/, print shape, dtypes, and head().
-
-    Returns
-    -------
-    dict
-        Mapping of filename → DataFrame for all successfully loaded CSVs.
-    """
-    csv_files = sorted(C.DIRS["raw"].glob("*.csv"))
+def inspect_datasets():
+    """Load all CSV files from data/raw/, print shape, dtypes, and head()."""
+    csv_files = sorted([f for f in os.listdir(RAW_DIR) if f.endswith('.csv')])
 
     if not csv_files:
-        log.error("No CSV files found in '%s'. Check your data folder.", C.DIRS["raw"])
+        print("Error: No CSV files found in 'data/raw/'. Please check your folder.")
         return {}
 
-    log.info("Found %d datasets. Beginning ingestion and inspection...", len(csv_files))
-    datasets: dict = {}
+    print(f"Found {len(csv_files)} datasets. Beginning ingestion and inspection...\n")
+    datasets = {}
 
-    for fp in csv_files:
-        log.info("=" * 55)
-        log.info("DATASET: %s", fp.name)
-        log.info("=" * 55)
+    for file in csv_files:
+        file_path = os.path.join(RAW_DIR, file)
+        print(f"{'='*55}")
+        print(f"📄 DATASET: {file}")
+        print(f"{'='*55}")
 
         try:
-            df = pd.read_csv(fp)
-            datasets[fp.name] = df
-            log.info("  SHAPE : %s", df.shape)
-            log.info("  DTYPES:\n%s", df.dtypes.to_string())
-            log.info("  HEAD  :\n%s", df.head().to_string())
-        except Exception as exc:
-            log.error("  Failed to load %s: %s", fp.name, exc)
+            df = pd.read_csv(file_path)
+            datasets[file] = df
+
+            print(f"\n📌 SHAPE (Rows × Columns): {df.shape}")
+            print(f"\n📌 DATA TYPES:\n{df.dtypes}")
+            print(f"\n📌 FIRST 5 ROWS:\n{df.head()}\n")
+        except Exception as e:
+            print(f"⚠️  Error reading {file}: {e}\n")
 
     return datasets
 
 
-# ─── 2. Validate AMFI codes ───────────────────────────────────────────────────
-def validate_amfi_codes() -> bool:
-    """Confirm every AMFI code in fund_master exists in nav_history.
-
-    Returns
-    -------
-    bool
-        True if all codes are present, False otherwise.
+# ─── 2. Data quality / anomaly report ─────────────────────────────────────────
+def document_anomalies(datasets: dict) -> dict:
     """
-    fund_master  = pd.read_csv(C.DIRS["raw"] / C.RAW_FILES["fund_master"])
-    nav_history  = pd.read_csv(C.DIRS["raw"] / C.RAW_FILES["nav_history"])
+    For each dataset check for:
+      - Missing values
+      - Duplicate rows
+      - Numeric columns with zero or negative values (where inappropriate)
+    Returns a dict summary and writes reports/data_quality_summary.md
+    """
+    print("\n" + "="*55)
+    print("🔍 DATA QUALITY / ANOMALY REPORT")
+    print("="*55)
 
-    master_codes = set(fund_master["amfi_code"].astype(str))
-    nav_codes    = set(nav_history["amfi_code"].astype(str))
-    missing      = master_codes - nav_codes
+    quality_summary = {}
 
-    if missing:
-        log.warning("AMFI codes in fund_master but NOT in nav_history: %s", missing)
-        return False
+    for name, df in datasets.items():
+        missing      = df.isnull().sum()
+        missing_pct  = (missing / len(df) * 100).round(2)
+        dup_rows     = df.duplicated().sum()
 
-    log.info("AMFI Code Validation PASSED — all %d codes present in nav_history.", len(master_codes))
-    return True
+        anomalies = []
+
+        # Missing values
+        missing_cols = missing[missing > 0]
+        if not missing_cols.empty:
+            for col, cnt in missing_cols.items():
+                anomalies.append(f"Missing: {col} → {cnt} nulls ({missing_pct[col]}%)")
+
+        # Duplicates
+        if dup_rows:
+            anomalies.append(f"Duplicate rows: {dup_rows}")
+
+        # Domain-specific checks
+        if 'nav' in df.columns:
+            neg_nav = (df['nav'] <= 0).sum()
+            if neg_nav:
+                anomalies.append(f"nav ≤ 0: {neg_nav} rows")
+
+        if 'amount_inr' in df.columns:
+            neg_amt = (df['amount_inr'] <= 0).sum()
+            if neg_amt:
+                anomalies.append(f"amount_inr ≤ 0: {neg_amt} rows")
+
+        if 'expense_ratio_pct' in df.columns:
+            out_of_range = ((df['expense_ratio_pct'] < 0.1) |
+                            (df['expense_ratio_pct'] > 2.5)).sum()
+            if out_of_range:
+                anomalies.append(f"expense_ratio_pct outside [0.1–2.5]: {out_of_range} rows")
+
+        quality_summary[name] = {
+            'rows': len(df),
+            'cols': len(df.columns),
+            'missing_cells': int(missing.sum()),
+            'duplicate_rows': int(dup_rows),
+            'anomalies': anomalies,
+        }
+
+        status = "✅ CLEAN" if not anomalies else "⚠️  ANOMALIES FOUND"
+        print(f"\n{status} — {name}")
+        if anomalies:
+            for a in anomalies:
+                print(f"   • {a}")
+
+    # Write markdown report
+    md_lines = ["# Data Quality Summary\n"]
+    for name, info in quality_summary.items():
+        md_lines.append(f"## {name}")
+        md_lines.append(f"- Rows: {info['rows']}  |  Cols: {info['cols']}")
+        md_lines.append(f"- Missing cells: {info['missing_cells']}  |  "
+                        f"Duplicate rows: {info['duplicate_rows']}")
+        if info['anomalies']:
+            md_lines.append("- **Anomalies:**")
+            for a in info['anomalies']:
+                md_lines.append(f"  - {a}")
+        else:
+            md_lines.append("- No anomalies detected.")
+        md_lines.append("")
+
+    report_path = os.path.join(REPORTS_DIR, 'data_quality_summary.md')
+    with open(report_path, 'w') as fh:
+        fh.write('\n'.join(md_lines))
+    print(f"\n📝 Quality report written → {report_path}")
+
+    return quality_summary
 
 
-# ─── 3. Explore fund_master ───────────────────────────────────────────────────
-def explore_fund_master() -> None:
+# ─── 3. Explore fund_master ────────────────────────────────────────────────────
+def explore_fund_master(fund_master: pd.DataFrame):
     """Print unique fund houses, categories, sub-categories, and risk grades."""
-    df = pd.read_csv(C.DIRS["raw"] / C.RAW_FILES["fund_master"])
+    print("\n" + "="*55)
+    print("📊 FUND MASTER EXPLORATION")
+    print("="*55)
 
-    for col in ["fund_house", "category", "sub_category", "risk_category"]:
-        if col in df.columns:
-            vals = df[col].dropna().unique()
-            log.info("Unique %s (%d): %s", col, len(vals), sorted(vals))
+    print(f"\n📌 Unique Fund Houses ({fund_master['fund_house'].nunique()}):")
+    for fh in sorted(fund_master['fund_house'].unique()):
+        print(f"   • {fh}")
 
+    print(f"\n📌 Unique Categories ({fund_master['category'].nunique()}):")
+    for cat in sorted(fund_master['category'].unique()):
+        print(f"   • {cat}")
 
-# ─── 4. Generate quality report ───────────────────────────────────────────────
-def generate_quality_report() -> Path:
-    """Scan all raw CSVs for missing values, duplicates, and range violations.
+    print(f"\n📌 Unique Sub-categories ({fund_master['sub_category'].nunique()}):")
+    for sc in sorted(fund_master['sub_category'].unique()):
+        print(f"   • {sc}")
 
-    Saves findings to reports/data_quality_summary.md.
-
-    Returns
-    -------
-    Path
-        Path to the generated Markdown report.
-    """
-    lines = ["# Data Quality Summary\n", f"Generated by data_ingestion.py\n\n"]
-
-    for key, fname in C.RAW_FILES.items():
-        fp = C.DIRS["raw"] / fname
-        if not fp.exists():
-            lines.append(f"## {fname}\n⚠️ File not found.\n\n")
-            continue
-
-        df = pd.read_csv(fp)
-        missing  = df.isnull().sum()
-        dups     = df.duplicated().sum()
-        total_mv = int(missing.sum())
-
-        lines.append(f"## {fname}\n")
-        lines.append(f"- Shape: {df.shape[0]} rows × {df.shape[1]} columns\n")
-        lines.append(f"- Duplicate rows: {dups}\n")
-        lines.append(f"- Total missing values: {total_mv}\n")
-
-        if total_mv > 0:
-            mv_cols = missing[missing > 0]
-            lines.append("- Missing per column:\n")
-            for col, cnt in mv_cols.items():
-                pct = cnt / len(df) * 100
-                lines.append(f"  - {col}: {cnt} ({pct:.1f}%)\n")
-        lines.append("\n")
-
-    out = C.DIRS["reports"] / "data_quality_summary.md"
-    out.write_text("".join(lines), encoding="utf-8")
-    log.info("Quality report saved: %s", out)
-    return out
+    print(f"\n📌 Unique Risk Grades ({fund_master['risk_category'].nunique()}):")
+    for rg in sorted(fund_master['risk_category'].unique()):
+        print(f"   • {rg}")
 
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
+# ─── 4. AMFI code validation ──────────────────────────────────────────────────
+def validate_amfi_codes(fund_master: pd.DataFrame, nav_history: pd.DataFrame):
+    """Confirm every amfi_code in fund_master exists in nav_history."""
+    print("\n" + "="*55)
+    print("🔍 AMFI CODE VALIDATION")
+    print("="*55)
+
+    master_codes = set(fund_master['amfi_code'].dropna().unique())
+    nav_codes    = set(nav_history['amfi_code'].dropna().unique())
+
+    print(f"Total unique AMFI codes in Fund Master : {len(master_codes)}")
+    print(f"Total unique AMFI codes in NAV History : {len(nav_codes)}")
+
+    missing_in_nav = master_codes - nav_codes
+    if not missing_in_nav:
+        print("\n✅ VALIDATION PASSED: Every AMFI code in fund_master exists in nav_history.")
+    else:
+        print(f"\n⚠️  VALIDATION WARNING: {len(missing_in_nav)} codes in fund_master missing from nav_history.")
+        print(f"   Sample: {sorted(list(missing_in_nav))[:5]}")
+
+    extra_in_nav = nav_codes - master_codes
+    if extra_in_nav:
+        print(f"\nℹ️  INFO: {len(extra_in_nav)} AMFI codes in nav_history have no entry in fund_master.")
+
+
+# ─── main ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    inspect_datasets()
-    validate_amfi_codes()
-    explore_fund_master()
-    generate_quality_report()
+    datasets = inspect_datasets()
+
+    if datasets:
+        fund_master = datasets.get('01_fund_master.csv')
+        nav_history = datasets.get('02_nav_history.csv')
+
+        document_anomalies(datasets)
+        explore_fund_master(fund_master)
+        validate_amfi_codes(fund_master, nav_history)
+
+        print("\n✅ Task 1 — Data Ingestion & ETL complete.")

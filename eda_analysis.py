@@ -544,63 +544,18 @@ def document_eda_findings(nav_df, sip_df, folio_df, txn_df, perf_df,
 
 
 # ─── main ─────────────────────────────────────────────────────────────────────
-
-    # Load datasets — prefer cleaned versions if available
-    def load_any(clean_name, raw_name):
-        path_clean = os.path.join(PROC_DIR, clean_name)
-        if os.path.exists(path_clean):
-            return pd.read_csv(path_clean)
-        return pd.read_csv(os.path.join(RAW_DIR, raw_name))
-
-    nav_df       = load_any('02_nav_history_clean.csv',          '02_nav_history.csv')
-    fund_master  = load_any('01_fund_master_clean.csv',          '01_fund_master.csv')
-    aum_df       = load_any('03_aum_by_fund_house_clean.csv',    '03_aum_by_fund_house.csv')
-    sip_df       = load_any('04_monthly_sip_inflows_clean.csv',  '04_monthly_sip_inflows.csv')
-    cat_df       = load_any('05_category_inflows_clean.csv',     '05_category_inflows.csv')
-    folio_df     = load_any('06_industry_folio_count_clean.csv', '06_industry_folio_count.csv')
-    perf_df      = load_any('07_scheme_performance_clean.csv',   '07_scheme_performance.csv')
-    txn_df       = load_any('08_investor_transactions_clean.csv','08_investor_transactions.csv')
-    holdings_df  = load_any('09_portfolio_holdings_clean.csv',   '09_portfolio_holdings.csv')
-
-    print(f"\nGenerating charts → {CHARTS_DIR}\n")
-
-    chart_nav_trend(nav_df, fund_master)
-    chart_aum_growth(aum_df)
-    chart_sip_timeseries(sip_df)
-    chart_category_heatmap(cat_df)
-    chart_age_distribution(txn_df)
-    chart_sip_boxplot_age(txn_df)
-    chart_gender_split(txn_df)
-    chart_state_sip(txn_df)
-    chart_t30_b30(txn_df)
-    chart_folio_growth(folio_df)
-    chart_nav_correlation(nav_df, fund_master)
-    chart_sector_donut(holdings_df, fund_master)
-    chart_expense_ratio(perf_df)
-    chart_risk_grade(fund_master)
-    chart_morningstar(perf_df)
-
-    document_eda_findings(nav_df, sip_df, folio_df, txn_df, perf_df,
-                          fund_master, holdings_df)
-
-    chart_files = sorted(os.listdir(CHARTS_DIR))
-    print(f"\n✅ Task 3 EDA complete — {len(chart_files)} charts generated in {CHARTS_DIR}")
-
-
-# ─── Entry-point for run_pipeline.py ─────────────────────────────────────────
-def run_all():
-    """Execute the full EDA suite: 15 charts + documented findings."""
+if __name__ == "__main__":
     print("="*65)
     print("TASK 3 — Exploratory Data Analysis (EDA)")
     print("="*65)
-    
+
     # Load datasets — prefer cleaned versions if available
     def load_any(clean_name, raw_name):
         path_clean = os.path.join(PROC_DIR, clean_name)
         if os.path.exists(path_clean):
             return pd.read_csv(path_clean)
         return pd.read_csv(os.path.join(RAW_DIR, raw_name))
-    
+
     nav_df       = load_any('02_nav_history_clean.csv',          '02_nav_history.csv')
     fund_master  = load_any('01_fund_master_clean.csv',          '01_fund_master.csv')
     aum_df       = load_any('03_aum_by_fund_house_clean.csv',    '03_aum_by_fund_house.csv')
@@ -610,9 +565,9 @@ def run_all():
     perf_df      = load_any('07_scheme_performance_clean.csv',   '07_scheme_performance.csv')
     txn_df       = load_any('08_investor_transactions_clean.csv','08_investor_transactions.csv')
     holdings_df  = load_any('09_portfolio_holdings_clean.csv',   '09_portfolio_holdings.csv')
-    
+
     print(f"\nGenerating charts → {CHARTS_DIR}\n")
-    
+
     chart_nav_trend(nav_df, fund_master)
     chart_aum_growth(aum_df)
     chart_sip_timeseries(sip_df)
@@ -628,13 +583,9 @@ def run_all():
     chart_expense_ratio(perf_df)
     chart_risk_grade(fund_master)
     chart_morningstar(perf_df)
-    
+
     document_eda_findings(nav_df, sip_df, folio_df, txn_df, perf_df,
                           fund_master, holdings_df)
-    
+
     chart_files = sorted(os.listdir(CHARTS_DIR))
     print(f"\n✅ Task 3 EDA complete — {len(chart_files)} charts generated in {CHARTS_DIR}")
-
-
-if __name__ == "__main__":
-    run_all()
