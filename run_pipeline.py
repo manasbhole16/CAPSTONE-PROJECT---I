@@ -1,23 +1,6 @@
 """
 run_pipeline.py — Master Execution Script
 Capstone Project - I | Bluestock Mutual Fund Analytics
-
-Orchestrates the full end-to-end pipeline:
-  Step 1: Data Ingestion & Validation  (data_ingestion.py)
-  Step 2: Data Cleaning & SQLite DB    (data_cleaning.py)
-  Step 3: Exploratory Data Analysis    (eda_analysis.py)
-  Step 4: Performance Analytics        (performance_analytics.py)
-  Step 5: Advanced Analytics           (advanced_analytics.py)
-  Step 6: Dashboard Export             (dashboard_export.py)
-  Step 7: Fund Recommender Demo        (recommender.py)
-
-Usage:
-    python run_pipeline.py              # run all steps
-    python run_pipeline.py --steps 1,2  # run specific steps
-    python run_pipeline.py --skip 6     # skip specific steps
-    python run_pipeline.py --from 3     # start from step N
-
-All paths and constants are resolved via config.py — nothing is hardcoded.
 """
 
 import sys
@@ -49,28 +32,69 @@ log = logging.getLogger("pipeline")
 def _step_ingestion():
     """Step 1: Data ingestion, shape checks, and anomaly report."""
     import data_ingestion as di
-    di.inspect_datasets()
-    di.validate_amfi_codes()
-    di.explore_fund_master()
-    di.generate_quality_report()
-
+    datasets = di.inspect_datasets()
+    if datasets:
+        fund_master = datasets.get('01_fund_master.csv')
+        nav_history = datasets.get('02_nav_history.csv')
+        di.document_anomalies(datasets)
+        di.explore_fund_master(fund_master)
+        di.validate_amfi_codes(fund_master, nav_history)
 
 def _step_cleaning():
     """Step 2: Data cleaning + SQLite database creation."""
     import data_cleaning as dc
-    dc.clean_nav_history()
-    dc.clean_investor_transactions()
-    dc.clean_scheme_performance()
-    dc.clean_remaining_datasets()
-    dc.create_database()
-    dc.write_sql_artifacts()
-    dc.generate_data_dictionary()
+    import pandas as pd
+    import os
+    nav_clean  = dc.clean_nav_history()
+    txn_clean  = dc.clean_investor_transactions()
+    perf_clean = dc.clean_scheme_performance()
+    others     = dc.clean_remaining_datasets()
 
+    fund_master = pd.read_csv(os.path.join(dc.RAW_DIR, '01_fund_master.csv'))
+    aum_df      = pd.read_csv(os.path.join(dc.RAW_DIR, '03_aum_by_fund_house.csv'))
+
+    dc.load_to_sqlite(nav_clean, txn_clean, perf_clean, aum_df, fund_master)
+    dc.write_sql_files()
+    dc.run_sample_queries()
 
 def _step_eda():
     """Step 3: Exploratory Data Analysis — 15 charts."""
     import eda_analysis as eda
-    eda.run_all()
+    import os, pandas as pd
+    
+    def load_any(clean_name, raw_name):
+        path_clean = os.path.join(eda.PROC_DIR, clean_name)
+        if os.path.exists(path_clean):
+            return pd.read_csv(path_clean)
+        return pd.read_csv(os.path.join(eda.RAW_DIR, raw_name))
+
+    nav_df       = load_any('02_nav_history_clean.csv',          '02_nav_history.csv')
+    fund_master  = load_any('01_fund_master_clean.csv',          '01_fund_master.csv')
+    aum_df       = load_any('03_aum_by_fund_house_clean.csv',    '03_aum_by_fund_house.csv')
+    sip_df       = load_any('04_monthly_sip_inflows_clean.csv',  '04_monthly_sip_inflows.csv')
+    cat_df       = load_any('05_category_inflows_clean.csv',     '05_category_inflows.csv')
+    folio_df     = load_any('06_industry_folio_count_clean.csv', '06_industry_folio_count.csv')
+    perf_df      = load_any('07_scheme_performance_clean.csv',   '07_scheme_performance.csv')
+    txn_df       = load_any('08_investor_transactions_clean.csv','08_investor_transactions.csv')
+    holdings_df  = load_any('09_portfolio_holdings_clean.csv',   '09_portfolio_holdings.csv')
+
+    eda.chart_nav_trend(nav_df, fund_master)
+    eda.chart_aum_growth(aum_df)
+    eda.chart_sip_timeseries(sip_df)
+    eda.chart_category_heatmap(cat_df)
+    eda.chart_age_distribution(txn_df)
+    eda.chart_sip_boxplot_age(txn_df)
+    eda.chart_gender_split(txn_df)
+    eda.chart_state_sip(txn_df)
+    eda.chart_t30_b30(txn_df)
+    eda.chart_folio_growth(folio_df)
+    eda.chart_nav_correlation(nav_df, fund_master)
+    eda.chart_sector_donut(holdings_df, fund_master)
+    eda.chart_expense_ratio(perf_df)
+    eda.chart_risk_grade(fund_master)
+    eda.chart_morningstar(perf_df)
+
+    eda.document_eda_findings(nav_df, sip_df, folio_df, txn_df, perf_df, fund_master, holdings_df)
 
 
 def _step_performance():

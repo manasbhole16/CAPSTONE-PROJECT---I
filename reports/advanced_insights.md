@@ -2,7 +2,7 @@
 
 **I1 — Highest Risk (VaR):** 'ABSL Small Cap Fund - Regular - Growth' has the worst 95% VaR of -2.39% per day, meaning on 1 in 20 trading days losses could exceed this. Its CVaR (expected shortfall) is -3.03%, indicating fat-tail risk. Investors in this fund should be prepared for sharp drawdowns.
 
-**I2 — Highest-Investing Cohort:** The 2025 investor cohort (138 investors) has the highest avg SIP of ₹13,505, with ₹0.2 Cr total invested. Their top fund preference is 'ICICI Pru Liquid Fund - Regular - G', reflecting a growth-oriented bias.
+**I2 — Highest-Investing Cohort:** The 2025 investor cohort (138 investors) has the highest avg SIP of ₹13,505, with ₹0.2 Cr total invested. Their top fund preference is 'SBI Small Cap Fund - Direct Plan - ', reflecting a growth-oriented bias.
 
 **I3 — SIP Continuity Risk:** Among investors with ≥6 SIP transactions, 97.8% are 'at-risk' with an average gap between SIP instalments exceeding 35 days (overall avg gap: 64.9 days). This signals potential churn risk and is a KPI for investor engagement teams.
 
